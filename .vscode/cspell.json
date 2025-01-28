@@ -17,6 +17,7 @@
   "ignoreRegExpList": [],
   "ignoreWords": [
     "azsdk",
+    "azuresdkdocs",
     "azuresdkforc",
     "CMAKE",
     "cmocka",
@@ -48,6 +49,7 @@
     "mkdir",
     "moxygen",
     "mqtt",
+    "MQTTCLIENT",
     "mspremier",
     "MSRC",
     "MSVC",
