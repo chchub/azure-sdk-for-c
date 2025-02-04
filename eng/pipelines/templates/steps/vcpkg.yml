@@ -1,62 +1,18 @@
-parameters:
-  # Use the variable name itself (no $() or other wrapping syntax). This is
-  # because we use runtime and macro expressions for conditions and script
-  # invocations
-  DependenciesVariableName: vcpkg.deps
-
 steps:
   - pwsh: |
-      $TargetPath = "$(Agent.TempDirectory)/vcpkg"
-      Remove-Item -Path $TargetPath -Recurse -Force -ErrorAction Ignore
-      New-Item -ItemType Directory -Path $TargetPath  -Force
-
-      $VcpkgCommit = $(Get-Content eng/vcpkg-commit.txt)
-      Write-Host "Target Path for vcpkg: $TargetPath"
-      Write-Host "Vcpkg SHA: $VcpkgCommit"
-
-      Write-Host "##vso[task.prependpath]$TargetPath"
-      Write-Host "##vso[task.setvariable variable=VCPKG_INSTALLATION_ROOT]$TargetPath"
-      Write-Host "##vso[task.setvariable variable=VcpkgCommit]$VcpkgCommit"
+      Write-Host "##vso[task.setvariable variable=VCPKG_BINARY_SOURCES_SECRET;issecret=true;]clear;x-azblob,https://azuresdkartifacts.blob.core.windows.net/public-vcpkg-container,,read"
+      Write-Host "##vso[task.setvariable variable=X_VCPKG_ASSET_SOURCES_SECRET;issecret=true;]clear;x-azurl,https://azuresdkartifacts.blob.core.windows.net/public-vcpkg-container,,read"
     displayName: Set Vcpkg Variables
-    condition: >-
-      and(
-        succeeded(),
-        not(eq(variables['${{ parameters.DependenciesVariableName }}'], ''))
-      )
-  
-  # $(VCPKG_DEFAULT_TRIPLET) added to the restore key of the cache to make it more unique and force a cache miss
-  # The triplet helps in capturing the processor architecture, OS and linking configuration during packaging
-  - task: Cache@2
-    inputs:
-      key: >-
-        $(Agent.JobName)
-        | "$(VcpkgCommit)"
-        | $(Agent.Os)
-        | $(${{ parameters.DependenciesVariableName }})
-        | $(VCPKG_DEFAULT_TRIPLET)
-      path: $(VCPKG_INSTALLATION_ROOT)
-      cacheHitVar: VcpkgRestoredFromCache
-    displayName: Vcpkg Cache
-    condition: >-
-      and(
-        succeeded(),
-        not(eq(variables['${{ parameters.DependenciesVariableName }}'], '')),
-        not(eq(variables['Skip.VcpkgCache'], 'true'))
-      )
 
-  - task: PowerShell@2
-    inputs:
-      targetType: filePath
-      filePath: eng/scripts/vcpkg.ps1
-      arguments: >-
-        -Ref $(VcpkgCommit)
-        -Dependencies "$(${{ parameters.DependenciesVariableName }})"
-        -VcpkgPath $(VCPKG_INSTALLATION_ROOT)
-      pwsh: true
-    displayName: Vcpkg Bootstrap and Install
-    condition: >-
-      and(
-        succeeded(),
-        not(eq(variables['${{ parameters.DependenciesVariableName }}'], '')),
-        ne(variables['VcpkgRestoredFromCache'], true)
-      )
+  - ${{if and(eq(variables['System.TeamProject'], 'internal'), ne(variables['Build.Reason'], 'PullRequest')) }}:
+    - task: AzurePowerShell@5
+      displayName: Set Vcpkg Write-mode Cache
+      inputs:
+        azureSubscription: 'Azure SDK Artifacts'
+        ScriptType: FilePath
+        ScriptPath: eng/scripts/Set-VcpkgWriteModeCache.ps1
+        azurePowerShellVersion: LatestVersion
+        pwsh: true
+      # This step is idempotent and can be run multiple times in cases of
+      # failure and partial execution.
+      retryCountOnTaskFailure: 3
